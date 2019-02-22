@@ -108,61 +108,8 @@ def CoreAnalyticsParser():
 
     counter = 0
     for file in analytics_location:
-        data = open(file, 'r').read()
-        data_lines = [json.loads(i) for i in data.split('\n') if i.startswith("{\"message\":")]
-
-        try:
-            diag_start = [json.loads(i) for i in data.split('\n') if
-                          i.startswith("{\"_marker\":") and "end-of-file"
-                          not in i][0]['startTimestamp']
-        except ValueError:
-            diag_start = "ERROR"
-
-        try:
-            diag_end = [json.loads(i) for i in data.split('\n') if
-                        i.startswith("{\"timestamp\":")][0]['timestamp']
-            diag_end = str(parser.parse(diag_end).astimezone(pytz.utc))
-            diag_end = diag_end.replace(' ', 'T').replace('+00:00', 'Z')
-        except ValueError:
-            diag_end = "ERROR"
-
-        for i in data_lines:
-            record = OrderedDict((h, '') for h in headers)
-            record['src_report'] = file
-            record['diag_start'] = diag_start
-            record['diag_end'] = diag_end
-            record['name'] = i['name']
-            record['uuid'] = i['uuid']
-
-            # If any fields not currently recorded (based on the headers above) appear,
-            # they will be added to overflow.
-            record['overflow'] = {}
-
-            for k, v in i['message'].items():
-                if k in record.keys():
-                    record[k] = i['message'][k]
-                else:
-                    record['overflow'].update({k: v})
-
-            if len(record['overflow']) == 0:
-                record['overflow'] = ''
-
-            if record['uptime'] != '':
-                record['uptime_parsed'] = time.strftime("%H:%M:%S",
-                                                        time.gmtime(record['uptime']))
-
-            if record['activeTime'] != '':
-                record['activeTime_parsed'] = time.strftime("%H:%M:%S",
-                                                            time.gmtime(record['activeTime']))
-
-            if record['powerTime'] != '':
-                record['powerTime_parsed'] = time.strftime("%H:%M:%S",
-                                                           time.gmtime(record['powerTime']))
-
-            if record['appDescription'] != '':
-                record['appName'] = record['appDescription'].split(' ||| ')[0]
-                record['appVersion'] = record['appDescription'].split(' ||| ')[1]
-
+        records = parse_core_analytics_records(file, headers)
+        for record in records:
             line = record.values()
             output.write_entry(line)
             counter += 1
@@ -179,43 +126,8 @@ def CoreAnalyticsParser():
         print ("[+] Found {0} aggregate files to parse.".format(len(agg_location)))
 
     for aggregate in agg_location:
-        data = open(aggregate, 'r').read()
-        data_lines = json.loads(data)
-
-        diag_start = stat(aggregate)['btime']
-        diag_end = stat(aggregate)['mtime']
-
-        raw = [i for i in data_lines if len(i) == 2 and (len(i[0]) == 3 and len(i[1]) == 7)]
-        for i in raw:
-            record = OrderedDict((h, '') for h in headers)
-
-            record['src_report'] = aggregate
-            record['diag_start'] = diag_start
-            record['diag_end'] = diag_end
-            record['uuid'] = os.path.basename(aggregate)
-            record['processName'] = i[0][0]
-
-            record['appDescription'] = i[0][1]
-            if record['appDescription'] != '':
-                record['appName'] = record['appDescription'].split(' ||| ')[0]
-                record['appVersion'] = record['appDescription'].split(' ||| ')[1]
-
-            record['foreground'] = i[0][2]
-
-            record['uptime'] = i[1][0]
-            record['uptime_parsed'] = time.strftime("%H:%M:%S", time.gmtime(i[1][0]))
-
-            record['activeTime'] = i[1][1]
-            record['activeTime_parsed'] = time.strftime("%H:%M:%S", time.gmtime(i[1][1]))
-
-            record['launches'] = i[1][2]
-            record['idleTimeouts'] = i[1][3]
-            record['activations'] = i[1][4]
-            record['activityPeriods'] = i[1][5]
-
-            record['powerTime'] = i[1][6]
-            record['powerTime_parsed'] = time.strftime("%H:%M:%S", time.gmtime(i[1][6]))
-
+        records = parse_aggregate_records(aggregate, headers)
+        for record in records:
             line = record.values()
             output.write_entry(line)
             counter += 1
@@ -226,6 +138,167 @@ def CoreAnalyticsParser():
         print ("[!] No output file generated.")
 
 
-if __name__ == "__main__":
+def parse_core_analytics_records(file, headers):
+    data = open(file, 'r').read()
+    data_lines = [json.loads(i) for i in data.split('\n') if i.startswith("{\"message\":")]
 
+    try:
+        diag_start = [json.loads(i) for i in data.split('\n') if
+                      i.startswith("{\"_marker\":") and "end-of-file"
+                      not in i][0]['startTimestamp']
+    except ValueError:
+        diag_start = "ERROR"
+
+    try:
+        diag_end = [json.loads(i) for i in data.split('\n') if
+                    i.startswith("{\"timestamp\":")][0]['timestamp']
+        diag_end = str(parser.parse(diag_end).astimezone(pytz.utc))
+        diag_end = diag_end.replace(' ', 'T').replace('+00:00', 'Z')
+    except ValueError:
+        diag_end = "ERROR"
+
+    for i in data_lines:
+        record = OrderedDict((h, '') for h in headers)
+        record['src_report'] = file
+        record['diag_start'] = diag_start
+        record['diag_end'] = diag_end
+        record['name'] = i['name']
+        record['uuid'] = i['uuid']
+
+        # If any fields not currently recorded (based on the headers above) appear,
+        # they will be added to overflow.
+        record['overflow'] = {}
+
+        for k, v in i['message'].items():
+            if k in record.keys():
+                record[k] = i['message'][k]
+            else:
+                record['overflow'].update({k: v})
+
+        if len(record['overflow']) == 0:
+            record['overflow'] = ''
+
+        if record['uptime'] != '':
+            record['uptime_parsed'] = time.strftime("%H:%M:%S",
+                                                    time.gmtime(record['uptime']))
+
+        if record['activeTime'] != '':
+            record['activeTime_parsed'] = time.strftime("%H:%M:%S",
+                                                        time.gmtime(record['activeTime']))
+
+        if record['powerTime'] != '':
+            record['powerTime_parsed'] = time.strftime("%H:%M:%S",
+                                                       time.gmtime(record['powerTime']))
+
+        if record['appDescription'] != '':
+            record['appName'] = record['appDescription'].split(' ||| ')[0]
+            record['appVersion'] = record['appDescription'].split(' ||| ')[1]
+
+        yield record
+
+
+def detect_aggregate_file_format(f):
+    lines = list(open(f))
+    if len(lines) == 1:
+        return 0
+    elif len(lines) == 2:
+        return 1
+    else:
+        return -1
+
+
+def parse_aggregate_v1(aggregate, headers):
+    data = open(aggregate, 'r').read()
+    data_lines = json.loads(data)
+
+    diag_start = stat(aggregate)['btime']
+    diag_end = stat(aggregate)['mtime']
+
+    raw = [i for i in data_lines if len(i) == 2 and (len(i[0]) == 3 and len(i[1]) == 7)]
+    for i in raw:
+        record = OrderedDict((h, '') for h in headers)
+
+        record['src_report'] = aggregate
+        record['diag_start'] = diag_start
+        record['diag_end'] = diag_end
+        record['uuid'] = os.path.basename(aggregate)
+        record['processName'] = i[0][0]
+
+        record['appDescription'] = i[0][1]
+        if record['appDescription'] != '':
+            record['appName'] = record['appDescription'].split(' ||| ')[0]
+            record['appVersion'] = record['appDescription'].split(' ||| ')[1]
+
+        record['foreground'] = i[0][2]
+
+        record['uptime'] = i[1][0]
+        record['uptime_parsed'] = time.strftime("%H:%M:%S", time.gmtime(i[1][0]))
+
+        record['activeTime'] = i[1][1]
+        record['activeTime_parsed'] = time.strftime("%H:%M:%S", time.gmtime(i[1][1]))
+
+        record['launches'] = i[1][2]
+        record['idleTimeouts'] = i[1][3]
+        record['activations'] = i[1][4]
+        record['activityPeriods'] = i[1][5]
+
+        record['powerTime'] = i[1][6]
+        record['powerTime_parsed'] = time.strftime("%H:%M:%S", time.gmtime(i[1][6]))
+
+        yield record
+
+def parse_aggregate_v2(aggregate, headers):
+    _, data = open(aggregate, 'r')
+    data_lines = json.loads(data)
+
+    diag_start = stat(aggregate)['btime']
+    diag_end = stat(aggregate)['mtime']
+
+    raw = [i for i in data_lines if len(i) == 2 and (len(i[0]) == 3 and len(i[1]) == 7)]
+    for i in raw:
+        record = OrderedDict((h, '') for h in headers)
+
+        record['src_report'] = aggregate
+        record['diag_start'] = diag_start
+        record['diag_end'] = diag_end
+        record['uuid'] = os.path.basename(aggregate)
+
+        record['appDescription'] = i[0][0]
+        if record['appDescription'] != '':
+            record['appName'] = record['appDescription'].split(' ||| ')[0]
+            record['appVersion'] = record['appDescription'].split(' ||| ')[1]
+
+        record['foreground'] = bool(i[0][1].upper() == 'YES')
+        record['processName'] = i[0][2]
+
+        record['uptime'] = i[1][0]
+        record['uptime_parsed'] = time.strftime("%H:%M:%S", time.gmtime(i[1][0]))
+
+        record['activeTime'] = i[1][1]
+        record['activeTime_parsed'] = time.strftime("%H:%M:%S", time.gmtime(i[1][1]))
+
+        record['launches'] = i[1][2]
+        record['idleTimeouts'] = i[1][3]
+        record['activations'] = i[1][4]
+        record['activityPeriods'] = i[1][5]
+
+        record['powerTime'] = i[1][6]
+        record['powerTime_parsed'] = time.strftime("%H:%M:%S", time.gmtime(i[1][6]))
+
+        yield record
+
+def parse_aggregate_records(aggregate, headers):
+    file_format = detect_aggregate_file_format(aggregate)
+    if file_format == 0:
+        parser = parse_aggregate_v1
+    elif file_format == 1:
+        parser = parse_aggregate_v2
+    else:
+        print("Unrecognized file format for file {}, skipping...", aggregate)
+        return
+
+    return parser(aggregate, headers)
+
+
+if __name__ == "__main__":
     CoreAnalyticsParser()
