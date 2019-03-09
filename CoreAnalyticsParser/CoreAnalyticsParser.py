@@ -95,7 +95,10 @@ def CoreAnalyticsParser():
 
     # Parse .core_analytics files from input locaation or from their directory on disk.
     if args.disk:
-        analytics_location = glob.glob('/Library/Logs/DiagnosticReports/Analytics*.core_analytics')
+    	if os.path.exists("/Library/Logs/DiagnosticReports/Retired"):
+    		analytics_location = glob.glob('/Library/Logs/DiagnosticReports/Retired/Analytics*.core_analytics')
+        else:
+        	analytics_location = glob.glob('/Library/Logs/DiagnosticReports/Analytics*.core_analytics')
     elif args.input and not args.input.endswith('.core_analytics'):
         analytics_location = glob.glob(args.input+'/Analytics*.core_analytics')
     elif args.input and args.input.endswith('.core_analytics'):
